@@ -41,7 +41,6 @@
             color: #f1f5f9;
             overflow-x: hidden;
         }
-        /* Custom Scrollbar */
         ::-webkit-scrollbar {
             width: 6px;
             height: 6px;
@@ -56,23 +55,87 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #06b6d4;
         }
-        .glow-cyan {
-            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
-        }
-        .glow-amber {
-            box-shadow: 0 0 15px rgba(245, 158, 11, 0.25);
-        }
-        .glow-violet {
-            box-shadow: 0 0 15px rgba(139, 92, 246, 0.25);
-        }
+        .glow-cyan { box-shadow: 0 0 15px rgba(6, 182, 212, 0.25); }
+        .glow-amber { box-shadow: 0 0 15px rgba(245, 158, 11, 0.25); }
+        .glow-violet { box-shadow: 0 0 15px rgba(139, 92, 246, 0.25); }
     </style>
+
+    <!-- FIREBASE SDK v10 (Sincronización Cloud en Tiempo Real) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        let db = null;
+        let currentUser = null;
+        let isSyncingFromCloud = false;
+
+        window.initFirebaseCloud = function(config) {
+            if (!config || !config.apiKey) return;
+            try {
+                const app = initializeApp(config);
+                const auth = getAuth(app);
+                db = getFirestore(app);
+
+                signInAnonymously(auth).catch(err => console.error("Error Auth Firebase:", err));
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        const userDocRef = doc(db, "users", user.uid);
+
+                        // Escuchar cambios en la nube en tiempo real
+                        onSnapshot(userDocRef, (docSnap) => {
+                            if (docSnap.exists()) {
+                                isSyncingFromCloud = true;
+                                const cloudData = docSnap.data();
+                                state = { ...state, ...cloudData };
+                                localStorage.setItem('jona_os_rpg_data', JSON.stringify(state));
+                                renderAll();
+                                isSyncingFromCloud = false;
+                                updateSyncStatusUI(true);
+                            } else {
+                                // Si es un nuevo usuario, enviar el estado inicial
+                                window.syncStateToCloud();
+                            }
+                        });
+                    }
+                });
+            } catch(e) {
+                console.error("Error al inicializar Firebase:", e);
+                updateSyncStatusUI(false);
+            }
+        };
+
+        window.syncStateToCloud = function() {
+            if (db && currentUser && !isSyncingFromCloud) {
+                const userDocRef = doc(db, "users", currentUser.uid);
+                // Clonar objeto estado limpio para Firestore
+                const cleanState = JSON.parse(JSON.stringify(state));
+                setDoc(userDocRef, cleanState, { merge: true })
+                    .then(() => updateSyncStatusUI(true))
+                    .catch(err => console.error("Error enviando datos a la nube:", err));
+            }
+        };
+
+        function updateSyncStatusUI(active) {
+            const label = document.getElementById('storage-mode-label');
+            const dot = document.getElementById('sync-status-indicator');
+            if (label) {
+                label.textContent = active ? 'Firebase Cloud (Tiempo Real)' : 'Local (Offline)';
+                label.className = active ? 'font-bold text-emerald-400' : 'font-bold text-amber-400';
+            }
+            if (dot) {
+                dot.className = active ? 'w-2 h-2 rounded-full bg-emerald-400 glow-cyan' : 'w-2 h-2 rounded-full bg-amber-400';
+            }
+        }
+    </script>
 </head>
 <body class="bg-rpg-bg text-slate-100 min-h-screen flex flex-col md:flex-row antialiased selection:bg-rpg-cyan selection:text-black">
 
     <!-- NAVIGATION SIDEBAR (Desktop) -->
     <aside class="hidden md:flex flex-col w-64 border-r border-rpg-border bg-rpg-card/60 backdrop-blur-md p-4 sticky top-0 h-screen z-30 justify-between">
         <div class="space-y-6">
-            <!-- Brand Logo -->
             <div class="flex items-center space-x-3 px-2">
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-violet-600 flex items-center justify-center shadow-lg glow-cyan">
                     <i data-lucide="shield" class="w-6 h-6 text-white"></i>
@@ -83,7 +146,6 @@
                 </div>
             </div>
 
-            <!-- Nav Links -->
             <nav class="space-y-1">
                 <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-cyan-400 bg-rpg-border/50 border border-cyan-500/30">
                     <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
@@ -116,7 +178,6 @@
             </nav>
         </div>
 
-        <!-- Controls & Sync -->
         <div class="space-y-3 pt-4 border-t border-rpg-border">
             <button onclick="toggleAudio()" id="audio-toggle-btn" class="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs bg-rpg-card border border-rpg-border text-slate-300 hover:text-white">
                 <span class="flex items-center gap-2"><i data-lucide="volume-2" class="w-4 h-4 text-cyan-400"></i> Sonido</span>
@@ -164,11 +225,9 @@
 
         <!-- HEADER TOP STATS BAR -->
         <header class="bg-rpg-card/80 border border-rpg-border rounded-2xl p-4 mb-6 shadow-xl relative overflow-hidden backdrop-blur-md">
-            <!-- Background Subtle Glow -->
             <div class="absolute -right-10 -top-10 w-40 h-40 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
             <div class="flex flex-col lg:flex-row items-center justify-between gap-4">
-                <!-- User Profile Info -->
                 <div class="flex items-center space-x-4 w-full lg:w-auto">
                     <div class="relative">
                         <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 via-violet-600 to-amber-500 p-0.5 shadow-lg">
@@ -190,7 +249,6 @@
                         </div>
                         <p class="text-xs text-slate-400 italic" id="daily-quote">"Cada mazo pulido construye un imperio digital."</p>
 
-                        <!-- Level & XP Progress Bar -->
                         <div class="mt-2 space-y-1">
                             <div class="flex justify-between text-[11px] font-mono text-slate-300">
                                 <span>XP Total: <span id="player-xp-curr" class="text-cyan-400 font-bold">0</span> / <span id="player-xp-next">100</span></span>
@@ -203,9 +261,7 @@
                     </div>
                 </div>
 
-                <!-- Currency & Vitals Cards -->
                 <div class="grid grid-cols-3 gap-2 w-full lg:w-auto font-mono">
-                    <!-- Energy Card -->
                     <div class="bg-rpg-bg/80 border border-rpg-border rounded-xl p-2.5 text-center min-w-[90px]">
                         <div class="flex items-center justify-center gap-1 text-amber-400 text-xs mb-1">
                             <i data-lucide="zap" class="w-3.5 h-3.5 fill-amber-400/20"></i>
@@ -216,7 +272,6 @@
                         </div>
                     </div>
 
-                    <!-- Gold Coins Card -->
                     <div class="bg-rpg-bg/80 border border-rpg-border rounded-xl p-2.5 text-center min-w-[90px]">
                         <div class="flex items-center justify-center gap-1 text-cyan-400 text-xs mb-1">
                             <i data-lucide="coins" class="w-3.5 h-3.5"></i>
@@ -227,7 +282,6 @@
                         </div>
                     </div>
 
-                    <!-- Streak Card -->
                     <div class="bg-rpg-bg/80 border border-rpg-border rounded-xl p-2.5 text-center min-w-[90px]">
                         <div class="flex items-center justify-center gap-1 text-rose-400 text-xs mb-1">
                             <i data-lucide="flame" class="w-3.5 h-3.5 fill-rose-400/20"></i>
@@ -243,7 +297,6 @@
 
         <!-- VIEW TAB 1: DASHBOARD -->
         <section id="view-dashboard" class="tab-view space-y-6">
-            <!-- Quick Actions Bar -->
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h3 class="text-xl font-bold flex items-center gap-2">
                     <i data-lucide="compass" class="text-cyan-400"></i> Panel Principal
@@ -258,9 +311,7 @@
                 </div>
             </div>
 
-            <!-- Top Grid Widgets -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- Today's Active Quests Widget -->
                 <div class="md:col-span-2 bg-rpg-card/60 border border-rpg-border rounded-2xl p-5 space-y-4">
                     <div class="flex items-center justify-between border-b border-rpg-border pb-3">
                         <h4 class="font-bold text-slate-200 flex items-center gap-2">
@@ -269,12 +320,9 @@
                         <span id="dashboard-quest-count" class="text-xs bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded-full font-mono">0 pendientes</span>
                     </div>
 
-                    <div id="dashboard-quest-list" class="space-y-3 min-h-[160px] flex flex-col justify-center">
-                        <!-- Dynamic content -->
-                    </div>
+                    <div id="dashboard-quest-list" class="space-y-3 min-h-[160px] flex flex-col justify-center"></div>
                 </div>
 
-                <!-- Next Timeblock Activity Widget -->
                 <div class="bg-rpg-card/60 border border-rpg-border rounded-2xl p-5 space-y-4 flex flex-col justify-between">
                     <div>
                         <div class="flex items-center justify-between border-b border-rpg-border pb-3">
@@ -284,9 +332,7 @@
                             <span class="text-xs text-slate-400" id="current-time-display">--:--</span>
                         </div>
 
-                        <div id="dashboard-next-block" class="mt-4 p-4 rounded-xl bg-rpg-bg border border-rpg-border space-y-2">
-                            <!-- Dynamic Content -->
-                        </div>
+                        <div id="dashboard-next-block" class="mt-4 p-4 rounded-xl bg-rpg-bg border border-rpg-border space-y-2"></div>
                     </div>
 
                     <button onclick="switchTab('planner')" class="w-full py-2 bg-rpg-cardHover text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border border-rpg-border">
@@ -295,7 +341,6 @@
                 </div>
             </div>
 
-            <!-- Skill Overview Grid -->
             <div class="space-y-3">
                 <div class="flex items-center justify-between">
                     <h4 class="font-bold text-slate-200 flex items-center gap-2">
@@ -304,9 +349,7 @@
                     <button onclick="switchTab('skills')" class="text-xs text-cyan-400 hover:underline">Ver todas</button>
                 </div>
 
-                <div id="dashboard-skills-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <!-- Dynamic Skill Cards -->
-                </div>
+                <div id="dashboard-skills-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
             </div>
         </section>
 
@@ -324,9 +367,7 @@
                 </button>
             </div>
 
-            <div id="skills-full-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                <!-- Skill items generated dynamically -->
-            </div>
+            <div id="skills-full-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
         </section>
 
         <!-- VIEW TAB 3: QUESTS -->
@@ -343,7 +384,6 @@
                 </button>
             </div>
 
-            <!-- Quest Filters -->
             <div class="flex border-b border-rpg-border gap-4 text-xs font-semibold text-slate-400">
                 <button onclick="filterQuests('all')" id="qfilter-all" class="qfilter-btn text-cyan-400 border-b-2 border-cyan-400 pb-2">Todas</button>
                 <button onclick="filterQuests('Diaria')" id="qfilter-Diaria" class="qfilter-btn hover:text-slate-200 pb-2">Diarias</button>
@@ -352,13 +392,10 @@
                 <button onclick="filterQuests('Proyecto')" id="qfilter-Proyecto" class="qfilter-btn hover:text-slate-200 pb-2">Proyectos</button>
             </div>
 
-            <!-- Quests List Container -->
-            <div id="quests-list" class="space-y-3">
-                <!-- Dynamic Quests -->
-            </div>
+            <div id="quests-list" class="space-y-3"></div>
         </section>
 
-        <!-- VIEW TAB 4: PLANNER (Timeblocks) -->
+        <!-- VIEW TAB 4: PLANNER -->
         <section id="view-planner" class="tab-view space-y-6 hidden">
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
@@ -379,16 +416,13 @@
                 </div>
             </div>
 
-            <!-- 30 Minute Slots Container -->
             <div class="bg-rpg-card/60 border border-rpg-border rounded-2xl p-4 md:p-6">
                 <div class="flex items-center justify-between border-b border-rpg-border pb-3 mb-4">
                     <span class="text-xs font-mono text-slate-400">HORA</span>
                     <span class="text-xs font-mono text-slate-400">ACTIVIDAD / MISIÓN ASIGNADA</span>
                 </div>
 
-                <div id="planner-slots-container" class="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-                    <!-- Dynamic Time slots -->
-                </div>
+                <div id="planner-slots-container" class="space-y-2 max-h-[600px] overflow-y-auto pr-2"></div>
             </div>
         </section>
 
@@ -406,9 +440,7 @@
                 </button>
             </div>
 
-            <div id="shop-rewards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                <!-- Dynamic rewards -->
-            </div>
+            <div id="shop-rewards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
         </section>
 
         <!-- VIEW TAB 6: ACHIEVEMENTS -->
@@ -420,9 +452,7 @@
                 <p class="text-xs text-slate-400 mt-1">Medallas unlocked por tu disciplina y constancia real.</p>
             </div>
 
-            <div id="achievements-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <!-- Dynamic Achievements -->
-            </div>
+            <div id="achievements-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </section>
 
         <!-- VIEW TAB 7: HISTORY -->
@@ -438,9 +468,7 @@
             </div>
 
             <div class="bg-rpg-card/60 border border-rpg-border rounded-2xl p-4">
-                <div id="history-log-list" class="space-y-3 max-h-[500px] overflow-y-auto font-mono text-xs">
-                    <!-- Dynamic logs -->
-                </div>
+                <div id="history-log-list" class="space-y-3 max-h-[500px] overflow-y-auto font-mono text-xs"></div>
             </div>
         </section>
 
@@ -527,9 +555,7 @@
 
                 <div>
                     <label class="block text-xs text-slate-400 mb-1">Habilidades Asociadas (Distribución de XP)</label>
-                    <div id="quest-skills-selector" class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-2 bg-rpg-bg rounded-xl border border-rpg-border">
-                        <!-- Dynamic checkboxes -->
-                    </div>
+                    <div id="quest-skills-selector" class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-2 bg-rpg-bg rounded-xl border border-rpg-border"></div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-3">
@@ -543,7 +569,6 @@
                     </div>
                 </div>
 
-                <!-- Preview Rewards Badge -->
                 <div class="p-3 bg-rpg-bg/50 rounded-xl border border-rpg-border flex justify-between items-center text-xs font-mono">
                     <span class="text-slate-400">Recompensa Estimada:</span>
                     <span class="text-cyan-400 font-bold" id="quest-reward-preview">+30 XP | +25 Monedas</span>
@@ -619,7 +644,6 @@
 
     <!-- MAIN SCRIPT LOGIC -->
     <script>
-        // --- 1. INITIAL APP STATE ---
         const DEFAULT_SKILLS = [
             { id: 'sk_1', name: 'Economía', category: 'Personal', color: '#f59e0b', level: 1, xp: 0, desc: 'Gestión financiera y presupuestos.' },
             { id: 'sk_2', name: 'ASIR', category: 'Técnica', color: '#06b6d4', level: 1, xp: 0, desc: 'Administración de Sistemas Informáticos.' },
@@ -658,7 +682,7 @@
             },
             skills: [...DEFAULT_SKILLS],
             quests: [],
-            planner: {}, // Key: 'YYYY-MM-DD', Value: array of 48 slots (30 min)
+            planner: {},
             rewards: [...DEFAULT_REWARDS],
             history: [],
             audioMuted: false,
@@ -668,7 +692,7 @@
         let activeFilter = 'all';
         let activeTab = 'dashboard';
 
-        // --- 2. AUDIO SYNTHESIZER (Web Audio API) ---
+        // AUDIO SYNTHESIZER
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
         function playSound(type) {
@@ -683,8 +707,8 @@
 
                 if (type === 'complete') {
                     osc.type = 'sine';
-                    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
-                    osc.frequency.exponentialRampToValueAtTime(659.25, audioCtx.currentTime + 0.15); // E5
+                    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(659.25, audioCtx.currentTime + 0.15);
                     gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
                     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
                     osc.start();
@@ -711,10 +735,15 @@
             saveState();
         }
 
-        // --- 3. STORAGE & SAVE MECHANISM ---
+        // SAVE & SYNC MECHANISM
         function saveState() {
             localStorage.setItem('jona_os_rpg_data', JSON.stringify(state));
             renderAll();
+            
+            // Sincronizar en tiempo real con Firebase si está configurado
+            if (window.syncStateToCloud) {
+                window.syncStateToCloud();
+            }
         }
 
         function loadState() {
@@ -725,21 +754,24 @@
                     state = { ...state, ...parsed };
                 } catch(e) { console.error('Error parsing state', e); }
             } else {
-                // Initial demo quests
                 state.quests = [
                     { id: 'q_1', title: 'Revisar logs de servidor ASIR', type: 'Diaria', difficulty: 'Normal', energyCost: 20, xp: 30, gold: 25, skillIds: ['sk_2'], completed: false, date: new Date().toISOString().split('T')[0] },
                     { id: 'q_2', title: 'Sesión de ejercicio 30 min', type: 'Diaria', difficulty: 'Fácil', energyCost: 15, xp: 15, gold: 10, skillIds: ['sk_6', 'sk_8'], completed: false, date: new Date().toISOString().split('T')[0] }
                 ];
             }
             checkDailyEnergyReset();
+
+            // Cargar Firebase de inmediato si ya fue guardado
+            if (state.firebaseConfig && window.initFirebaseCloud) {
+                window.initFirebaseCloud(state.firebaseConfig);
+            }
         }
 
         function checkDailyEnergyReset() {
             const today = new Date().toISOString().split('T')[0];
             if (state.player.lastActiveDate !== today) {
-                state.player.energy = 100; // Daily Energy Restore
+                state.player.energy = 100;
                 
-                // Calculate streak
                 const last = new Date(state.player.lastActiveDate);
                 const current = new Date(today);
                 const diffTime = Math.abs(current - last);
@@ -756,7 +788,7 @@
             }
         }
 
-        // --- 4. NAVIGATION & TABS ---
+        // NAVIGATION
         function switchTab(tabId) {
             activeTab = tabId;
             document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
@@ -773,7 +805,7 @@
             lucide.createIcons();
         }
 
-        // --- 5. LOGIC FOR EXPERIENCE & LEVELS ---
+        // XP & LEVEL LOGIC
         function getRequiredXP(level) {
             return level * 100;
         }
@@ -790,7 +822,6 @@
                 req = getRequiredXP(state.player.level);
             }
 
-            // Distribute XP to associated skills
             if (skillIds.length > 0) {
                 const xpPerSkill = Math.floor(amount / skillIds.length);
                 skillIds.forEach(skId => {
@@ -808,7 +839,7 @@
             }
         }
 
-        // --- 6. QUEST MANAGEMENT ---
+        // QUESTS
         function handleSaveQuest(e) {
             e.preventDefault();
             const title = document.getElementById('quest-title').value.trim();
@@ -817,7 +848,6 @@
             const energyCost = parseInt(document.getElementById('quest-energy').value) || 20;
             const date = document.getElementById('quest-date').value || new Date().toISOString().split('T')[0];
 
-            // Get selected skills
             const skillBoxes = document.querySelectorAll('.quest-skill-checkbox:checked');
             const skillIds = Array.from(skillBoxes).map(cb => cb.value);
 
@@ -890,7 +920,7 @@
             document.getElementById('quest-reward-preview').textContent = `+${xp} XP | +${gold} Monedas`;
         }
 
-        // --- 7. SKILL MANAGEMENT ---
+        // SKILLS
         function handleSaveSkill(e) {
             e.preventDefault();
             const name = document.getElementById('skill-name').value.trim();
@@ -913,7 +943,7 @@
             saveState();
         }
 
-        // --- 8. SHOP & REWARDS ---
+        // REWARDS
         function handleSaveReward(e) {
             e.preventDefault();
             const title = document.getElementById('reward-title').value.trim();
@@ -946,14 +976,14 @@
             saveState();
         }
 
-        // --- 9. TIMEBLOCK PLANNER LOGIC ---
+        // PLANNER
         function renderPlanner() {
             const input = document.getElementById('planner-date-input');
             if (!input.value) input.value = new Date().toISOString().split('T')[0];
             const dateKey = input.value;
 
             if (!state.planner[dateKey]) {
-                state.planner[dateKey] = Array(48).fill(null); // 48 intervals of 30 min
+                state.planner[dateKey] = Array(48).fill(null);
             }
 
             const container = document.getElementById('planner-slots-container');
@@ -990,7 +1020,7 @@
             renderPlanner();
         }
 
-        // --- 10. HISTORY LOGGING ---
+        // HISTORY
         function logHistory(eventText) {
             const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             state.history.unshift(`[${timestamp}] ${eventText}`);
@@ -1002,7 +1032,7 @@
             saveState();
         }
 
-        // --- 11. RENDERING FUNCTIONS ---
+        // RENDERERS
         function renderHeaderStats() {
             document.getElementById('player-name-display').textContent = state.player.name;
             document.getElementById('player-avatar-text').textContent = state.player.name.substring(0, 2).toUpperCase();
@@ -1070,7 +1100,6 @@
                 container.appendChild(card);
             });
 
-            // Populate dashboard widget with top 3 pending
             if (dashContainer) {
                 if (pendingQuests.length === 0) {
                     dashContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-4">¡Todas las misiones completadas por hoy!</p>`;
@@ -1104,7 +1133,6 @@
                 const req = s.level * 80;
                 const pct = Math.min(100, Math.floor((s.xp / req) * 100));
 
-                // Full Grid Card
                 const card = document.createElement('div');
                 card.className = 'bg-rpg-card border border-rpg-border rounded-2xl p-5 space-y-3 relative overflow-hidden';
                 card.innerHTML = `
@@ -1128,7 +1156,6 @@
                 `;
                 grid.appendChild(card);
 
-                // Dashboard widget card
                 if (dashGrid) {
                     const dCard = document.createElement('div');
                     dCard.className = 'bg-rpg-card/60 border border-rpg-border rounded-xl p-3 space-y-2';
@@ -1144,7 +1171,6 @@
                     dashGrid.appendChild(dCard);
                 }
 
-                // Modal Quest Selector
                 if (questSelector) {
                     const label = document.createElement('label');
                     label.className = 'flex items-center space-x-2 text-xs text-slate-300 cursor-pointer p-1 rounded hover:bg-rpg-card';
@@ -1263,14 +1289,9 @@
             lucide.createIcons();
         }
 
-        // --- 12. UTILS & MODALS ---
-        function openModal(modalId) {
-            document.getElementById(modalId).classList.remove('hidden');
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).classList.add('hidden');
-        }
+        // UTILS & MODALS
+        function openModal(modalId) { document.getElementById(modalId).classList.remove('hidden'); }
+        function closeModal(modalId) { document.getElementById(modalId).classList.add('hidden'); }
 
         function editPlayerName() {
             const newName = prompt('Ingresa tu nombre de personaje:', state.player.name);
@@ -1290,9 +1311,7 @@
             a.click();
         }
 
-        function openSyncModal() {
-            openModal('modal-sync');
-        }
+        function openSyncModal() { openModal('modal-sync'); }
 
         function saveFirebaseConfig() {
             const input = document.getElementById('firebase-config-input').value.trim();
@@ -1300,22 +1319,21 @@
             try {
                 const parsed = JSON.parse(input);
                 state.firebaseConfig = parsed;
-                document.getElementById('storage-mode-label').textContent = 'Firebase Cloud (Activo)';
-                document.getElementById('storage-mode-label').className = 'font-bold text-emerald-400';
-                document.getElementById('sync-status-indicator').className = 'w-2 h-2 rounded-full bg-emerald-400';
                 saveState();
+                if (window.initFirebaseCloud) {
+                    window.initFirebaseCloud(parsed);
+                }
                 closeModal('modal-sync');
-                alert('Configuración de Firebase guardada correctamente.');
             } catch(e) {
                 alert('JSON inválido. Verifica el formato proporcionado.');
             }
         }
 
-        // --- 13. INITIALIZATION ---
+        // INIT
         window.onload = function() {
             loadState();
             renderAll();
-            setInterval(renderNextBlockWidget, 30000); // Refresh time slot every 30s
+            setInterval(renderNextBlockWidget, 30000);
         };
     </script>
 </body>
